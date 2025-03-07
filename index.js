@@ -56,17 +56,6 @@ async function getSignedUrl() {
   }
 }
 
-/**
- * WebSocket endpoint for Knowlarity.
- *
- * According to the Knowlarity documentation:
- *  - On connection, the first message will be a JSON text frame containing metadata.
- *  - After that, the call audio stream is transmitted as binary frames (16-bit PCM) at the configured sampling rate.
- *  - The server can also send JSON text frames back to Knowlarity to play audio, transfer, or disconnect the call.
- *
- * This implementation bridges the incoming Knowlarity audio to ElevenLabs and
- * sends back ElevenLabs responses to Knowlarity in the expected format.
- */
 fastify.register(async (fastifyInstance) => {
   fastifyInstance.get('/knowlarity-media-stream', { websocket: true }, (ws, req) => {
     console.info('[Server] Knowlarity connected to media stream');
