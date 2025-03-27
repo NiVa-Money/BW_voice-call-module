@@ -212,7 +212,7 @@ fastify.register(async (fastifyInstance) => {
 });
 
 // Start the Fastify server
-fastify.listen({ port: port }, (err) => {
+fastify.listen({ port: port, host: '0.0.0.0'}, (err) => {
   if (err) {
     console.error('Error starting server:', err);
     process.exit(1);
