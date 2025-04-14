@@ -84,11 +84,11 @@ fastify.register(async (fastifyInstance) => {
               agent: {
                 prompt: {
                   // Use a prompt from metadata if provided; otherwise a default prompt
-                  prompt: callMetadata?.prompt || 'Botwot customer service',
+                  prompt: callMetadata?.prompt || 'Nita Kitchenware customer service',
                 },
                 first_message:
                   callMetadata?.first_message ||
-                  'Hello, how can Botwot help you today?',
+                  'Hello, how can Nita Kitchenware help you today?',
               },
             },
           };
