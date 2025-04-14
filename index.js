@@ -127,10 +127,13 @@ fastify.register(async (fastifyInstance) => {
                 }
                 break;
 
-              // case 'interruption':
-              //   // Forward interruption as a disconnect command to Knowlarity
-              //   ws.send(JSON.stringify({ type: 'disconnect' }));
-              //   break;
+                case 'interruption':
+                  // Handle the interruption event without disconnecting
+                  // For example, you might log the interruption or adjust the assistant's behavior
+                  console.log('[ElevenLabs] Interruption received. Assistant should stop speaking and listen.');
+                  // No need to send a disconnect command
+                  break;
+                
 
               case 'ping':
                 if (message.ping_event?.event_id) {
