@@ -80,18 +80,9 @@ fastify.register(async (fastifyInstance) => {
             dynamic_variables: {
               // Optionally include additional client data
             },
-            conversation_config_override: {
-              agent: {
-                prompt: {
-                  // Use a prompt from metadata if provided; otherwise a default prompt
-                  prompt: callMetadata?.prompt || 'Nita Kitchenware customer service',
-                },
-                first_message:
-                  callMetadata?.first_message ||
-                  'Hello, how can Nita Kitchenware help you today?',
-              },
-            },
+            // Removed conversation_config_override to use default settings
           };
+          
 
           console.log('[ElevenLabs] Sending initial configuration:', initialConfig);
           elevenLabsWs.send(JSON.stringify(initialConfig));
