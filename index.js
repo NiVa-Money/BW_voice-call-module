@@ -119,7 +119,7 @@ fastify.register(async (fastifyInstance) => {
                           ? 16000
                           : callMetadata?.sampling_rate === '32k'
                           ? 32000
-                          : 8000, // default to 8k if not provided
+                          : 8000,
                       audioContent: audioPayload,
                     },
                   };
@@ -127,10 +127,10 @@ fastify.register(async (fastifyInstance) => {
                 }
                 break;
 
-              case 'interruption':
-                // Forward interruption as a disconnect command to Knowlarity
-                ws.send(JSON.stringify({ type: 'disconnect' }));
-                break;
+              // case 'interruption':
+              //   // Forward interruption as a disconnect command to Knowlarity
+              //   ws.send(JSON.stringify({ type: 'disconnect' }));
+              //   break;
 
               case 'ping':
                 if (message.ping_event?.event_id) {
