@@ -89,10 +89,11 @@ fastify.register(async (instance) => {
               break;
             }
 
+            // Replace your current interruption case handler with this:
             case 'interruption':
               console.log('[ElevenLabs] Interruption received. Assistant should stop speaking and listen.');
               
-              // 1. Stop the current audio playback on Knowlarity side
+              // Stop the current audio playback on Knowlarity side
               const stopAudioCommand = {
                 type: 'stopAudio',
                 data: {
@@ -100,21 +101,7 @@ fastify.register(async (instance) => {
                 }
               };
               ws.send(JSON.stringify(stopAudioCommand));
-              
-              // 2. Send an interruption acknowledgment to ElevenLabs (if their API supports it)
-              if (message.interruption_event?.event_id) {
-                elevenLabsWs.send(JSON.stringify({
-                  type: 'interruption_acknowledgment',
-                  event_id: message.interruption_event.event_id
-                }));
-              }
-              
-              // 3. Optional: Set a flag to indicate the assistant was interrupted
-              // This can be used to modify subsequent behavior
-              const wasInterrupted = true;
-              
               break;
-
             case 'ping': {
               if (msg.ping_event?.event_id) {
                 elevenWs.send(JSON.stringify({
