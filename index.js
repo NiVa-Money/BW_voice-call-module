@@ -6,23 +6,19 @@ import Fastify from 'fastify';
 import WebSocket from 'ws';
 import fetch from 'node-fetch';
 
-// Load environment variables from .env file
+// Load environment variables
 dotenv.config();
-
-// Ensure required ElevenLabs environment variables are provided
 const { ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID, PORT } = process.env;
 if (!ELEVENLABS_API_KEY || !ELEVENLABS_AGENT_ID) {
   console.error('Missing required ElevenLabs environment variables');
   throw new Error('Missing required environment variables');
 }
 
-// Initialize Fastify server
 const fastify = Fastify();
-
 fastify.register(fastifyCors, {
   origin: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET','POST','PUT','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization'],
   credentials: true,
 });
 fastify.register(fastifyFormBody);
@@ -30,186 +26,147 @@ fastify.register(fastifyWs);
 
 const port = PORT || 8000;
 
-// Root route for health check
+// Health check
 fastify.get('/', async (_, reply) => {
   reply.send({ message: 'Server is running' });
 });
 
-// Helper: Get a signed URL from ElevenLabs for the conversation
+// Fetch a signed Conversational AI URL from ElevenLabs
 async function getSignedUrl() {
-  try {
-    const response = await fetch(
-      `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${ELEVENLABS_AGENT_ID}`,
-      {
-        method: 'GET',
-        headers: { 'xi-api-key': ELEVENLABS_API_KEY },
-      }
-    );
-    if (!response.ok) {
-      throw new Error(`Failed to get signed URL: ${response.statusText}`);
-    }
-    const data = await response.json();
-    return data.signed_url;
-  } catch (error) {
-    console.error('Error getting signed URL:', error);
-    throw error;
-  }
+  const res = await fetch(
+    `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${ELEVENLABS_AGENT_ID}`,
+    { method: 'GET', headers: { 'xi-api-key': ELEVENLABS_API_KEY } }
+  );
+  if (!res.ok) throw new Error(`Failed to get signed URL: ${res.statusText}`);
+  const { signed_url } = await res.json();
+  return signed_url;
 }
 
-fastify.register(async (fastifyInstance) => {
-  fastifyInstance.get('/knowlarity-media-stream', { websocket: true }, (ws, req) => {
-    console.info('[Server] Knowlarity connected to media stream');
+fastify.register(async (instance) => {
+  instance.get('/knowlarity-media-stream', { websocket: true }, (ws, req) => {
+    console.info('[Server] Knowlarity connected');
 
-    // To hold the metadata received from Knowlarity
     let callMetadata = null;
     let metadataReceived = false;
-    let elevenLabsWs = null;
+    let elevenWs = null;
 
-    // Setup the ElevenLabs WebSocket connection
-    async function setupElevenLabsConnection() {
+    // Set up ElevenLabs WebSocket
+    async function setupEleven() {
       try {
-        const signedUrl = await getSignedUrl();
-        elevenLabsWs = new WebSocket(signedUrl);
+        const url = await getSignedUrl();
+        elevenWs = new WebSocket(url);
 
-        elevenLabsWs.on('open', () => {
-          console.log('[ElevenLabs] Connected to Conversational AI');
-
-          // Prepare initial configuration using metadata (if available)
-          const initialConfig = {
+        elevenWs.on('open', () => {
+          console.log('[ElevenLabs] Connected');
+          // Send start config
+          elevenWs.send(JSON.stringify({
             type: 'conversation_initiation_client_data',
-            dynamic_variables: {
-              // Optionally include additional client data
-            },
-            // Removed conversation_config_override to use default settings
-          };
-          
-
-          console.log('[ElevenLabs] Sending initial configuration:', initialConfig);
-          elevenLabsWs.send(JSON.stringify(initialConfig));
+            dynamic_variables: {}
+          }));
         });
 
-        elevenLabsWs.on('message', (data) => {
-          try {
-            const message = JSON.parse(data);
-            // Process responses from ElevenLabs and forward them to Knowlarity
-            switch (message.type) {
-              case 'audio':
-                // Extract audio payload from ElevenLabs response
-                const audioPayload =
-                  message.audio?.chunk ||
-                  message.audio_event?.audio_base_64;
-                if (audioPayload) {
-                  // Wrap the audio payload in a JSON command as per Knowlarity's spec.
-                  // For raw PCM, include the sampleRate.
-                  const responsePayload = {
-                    type: 'playAudio',
-                    data: {
-                      audioContentType: 'raw', // or "wave" as required
-                      sampleRate:
-                        callMetadata?.sampling_rate === '16k'
-                          ? 16000
-                          : callMetadata?.sampling_rate === '32k'
-                          ? 32000
-                          : 8000,
-                      audioContent: audioPayload,
-                    },
-                  };
-                  ws.send(JSON.stringify(responsePayload));
-                }
-                break;
+        elevenWs.on('message', (data) => {
+          let msg;
+          try { msg = JSON.parse(data); } 
+          catch (e) { return console.error('[ElevenLabs] Bad JSON', e); }
 
-                case 'interruption':
-                  // Handle the interruption event without disconnecting
-                  // For example, you might log the interruption or adjust the assistant's behavior
-                  console.log('[ElevenLabs] Interruption received. Assistant should stop speaking and listen.');
-                  // No need to send a disconnect command
-                  break;
-                
-
-              case 'ping':
-                if (message.ping_event?.event_id) {
-                  elevenLabsWs.send(
-                    JSON.stringify({
-                      type: 'pong',
-                      event_id: message.ping_event.event_id,
-                    })
-                  );
-                }
-                break;
-
-              default:
-                console.log('[ElevenLabs] Unhandled message type:', message.type);
+          switch (msg.type) {
+            case 'audio': {
+              const chunk = msg.audio?.chunk || msg.audio_event?.audio_base_64;
+              if (chunk) {
+                ws.send(JSON.stringify({
+                  type: 'playAudio',
+                  data: {
+                    audioContentType: 'raw',
+                    sampleRate:
+                      callMetadata?.sampling_rate === '16k' ? 16000 :
+                      callMetadata?.sampling_rate === '32k' ? 32000 : 8000,
+                    audioContent: chunk,
+                  }
+                }));
+              }
+              break;
             }
-          } catch (error) {
-            console.error('[ElevenLabs] Error processing message:', error);
+
+            case 'interruption': {
+              console.log('[ElevenLabs] Interruption ➞ stopping playback & TTS');
+              // 1) Tell Knowlarity to stop playing
+              ws.send(JSON.stringify({ type: 'stopAudio' }));
+              // 2) Tell ElevenLabs to halt TTS immediately
+              elevenWs.send(JSON.stringify({
+                type: 'conversation_end_client_data'
+              }));
+              break;
+            }
+
+            case 'ping': {
+              if (msg.ping_event?.event_id) {
+                elevenWs.send(JSON.stringify({
+                  type: 'pong',
+                  event_id: msg.ping_event.event_id
+                }));
+              }
+              break;
+            }
+
+            default:
+              console.log('[ElevenLabs] Unhandled:', msg.type);
           }
         });
 
-        elevenLabsWs.on('error', (error) => {
-          console.error('[ElevenLabs] WebSocket error:', error);
-        });
-
-        elevenLabsWs.on('close', () => {
-          console.log('[ElevenLabs] Connection closed');
-        });
-      } catch (error) {
-        console.error('Error setting up ElevenLabs connection:', error);
+        elevenWs.on('error', (err) => console.error('[ElevenLabs] Error', err));
+        elevenWs.on('close', () => console.log('[ElevenLabs] Closed'));
+      } catch (err) {
+        console.error('Error setting up ElevenLabs:', err);
       }
     }
 
-    setupElevenLabsConnection();
+    setupEleven();
 
-    // Handle messages from Knowlarity
+    // Handle Knowlarity WS messages
     ws.on('message', (message, isBinary) => {
       if (!metadataReceived && !isBinary) {
-        // The very first text message is expected to be metadata.
+        // First text frame is call metadata
         try {
-          const meta = JSON.parse(message.toString());
-          console.log('[Knowlarity] Metadata received:', meta);
-          callMetadata = meta;
+          callMetadata = JSON.parse(message.toString());
           metadataReceived = true;
-        } catch (err) {
-          console.error('[Knowlarity] Error parsing metadata:', err);
+          console.log('[Knowlarity] Metadata:', callMetadata);
+        } catch (e) {
+          console.error('[Knowlarity] Meta parse error', e);
         }
-      } else if (isBinary) {
-        // Incoming binary data is call audio.
-        if (elevenLabsWs && elevenLabsWs.readyState === WebSocket.OPEN) {
-          // Convert the binary audio frame to base64 encoding.
+      }
+      else if (isBinary) {
+        // Audio chunk from caller → forward to ElevenLabs
+        if (elevenWs && elevenWs.readyState === WebSocket.OPEN) {
+          ws.pause();  // prevent back-pressure; resume after send if needed
           const audioBase64 = message.toString('base64');
-          const audioMessage = {
-            user_audio_chunk: audioBase64,
-          };
-          elevenLabsWs.send(JSON.stringify(audioMessage));
+          elevenWs.send(JSON.stringify({ user_audio_chunk: audioBase64 }), () => {
+            ws.resume();
+          });
         }
-      } else {
-        // If additional text frames are received after metadata,
-        // they might be control messages (e.g., transfer or disconnect) from Knowlarity.
+      }
+      else {
+        // Further JSON control messages from Knowlarity
         try {
-          const controlMsg = JSON.parse(message.toString());
-          console.log('[Knowlarity] Control message received:', controlMsg);
-          // Process control commands if needed.
-          // For example, if a transfer command is received:
-          // { type: "transfer", data: { textContent: "+918770915486" } }
-        } catch (err) {
-          console.error('[Knowlarity] Error parsing control message:', err);
+          const ctrl = JSON.parse(message.toString());
+          console.log('[Knowlarity] Control:', ctrl);
+          // handle transfers, hangups, etc.
+        } catch (e) {
+          console.error('[Knowlarity] Ctrl parse error', e);
         }
       }
     });
 
     ws.on('close', () => {
-      console.log('[Knowlarity] Client disconnected');
-      if (elevenLabsWs && elevenLabsWs.readyState === WebSocket.OPEN) {
-        elevenLabsWs.close();
+      console.log('[Knowlarity] Disconnected');
+      if (elevenWs && elevenWs.readyState === WebSocket.OPEN) {
+        elevenWs.close();
       }
     });
   });
 });
 
-// Start the Fastify server
-fastify.listen({ port: port, host: '0.0.0.0'}, (err) => {
-  if (err) {
-    console.error('Error starting server:', err);
-    process.exit(1);
-  }
-  console.log(`[Server] Listening on port ${port}`);
+fastify.listen({ port, host: '0.0.0.0' }, (err) => {
+  if (err) { console.error(err); process.exit(1); }
+  console.log(`[Server] Listening on ${port}`);
 });
