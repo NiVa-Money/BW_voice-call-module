@@ -70,6 +70,7 @@ fastify.register(async (instance) => {
           try { msg = JSON.parse(data); } 
           catch (e) { return console.error('[ElevenLabs] Bad JSON', e); }
 
+          console.log('[ElevenLabs] Message:', msg);
           switch (msg.type) {
             case 'audio': {
               const chunk = msg.audio?.chunk || msg.audio_event?.audio_base_64;
@@ -88,16 +89,31 @@ fastify.register(async (instance) => {
               break;
             }
 
-            case 'interruption': {
-              console.log('[ElevenLabs] Interruption ➞ stopping playback & TTS');
-              // 1) Tell Knowlarity to stop playing
-              ws.send(JSON.stringify({ type: 'stopAudio' }));
-              // 2) Tell ElevenLabs to halt TTS immediately
-              elevenWs.send(JSON.stringify({
-                type: 'conversation_end_client_data'
-              }));
+            case 'interruption':
+              console.log('[ElevenLabs] Interruption received. Assistant should stop speaking and listen.');
+              
+              // 1. Stop the current audio playback on Knowlarity side
+              const stopAudioCommand = {
+                type: 'stopAudio',
+                data: {
+                  reason: 'userInterruption'
+                }
+              };
+              ws.send(JSON.stringify(stopAudioCommand));
+              
+              // 2. Send an interruption acknowledgment to ElevenLabs (if their API supports it)
+              if (message.interruption_event?.event_id) {
+                elevenLabsWs.send(JSON.stringify({
+                  type: 'interruption_acknowledgment',
+                  event_id: message.interruption_event.event_id
+                }));
+              }
+              
+              // 3. Optional: Set a flag to indicate the assistant was interrupted
+              // This can be used to modify subsequent behavior
+              const wasInterrupted = true;
+              
               break;
-            }
 
             case 'ping': {
               if (msg.ping_event?.event_id) {
