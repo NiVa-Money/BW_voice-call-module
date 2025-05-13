@@ -91,16 +91,10 @@ fastify.register(async (instance) => {
 
             // Replace your current interruption case handler with this:
             case 'interruption':
+              // Handle the interruption event without disconnecting
+              // For example, you might log the interruption or adjust the assistant's behavior
               console.log('[ElevenLabs] Interruption received. Assistant should stop speaking and listen.');
-              
-              // Stop the current audio playback on Knowlarity side
-              const stopAudioCommand = {
-                type: 'stopAudio',
-                data: {
-                  reason: 'userInterruption'
-                }
-              };
-              ws.send(JSON.stringify(stopAudioCommand));
+              // No need to send a disconnect command
               break;
             case 'ping': {
               if (msg.ping_event?.event_id) {
