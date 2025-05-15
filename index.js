@@ -93,7 +93,12 @@ fastify.register(async (instance) => {
                     type: 'playAudio',
                     data: {
                       audioContentType: 'raw',
-                      sampleRate: 16000,
+                      sampleRate:
+                        callMetadata?.sampling_rate === '16k'
+                          ? 16000
+                          : callMetadata?.sampling_rate === '32k'
+                          ? 32000
+                          : 8000,
                       audioContent: chunk,
                     },
                   })
